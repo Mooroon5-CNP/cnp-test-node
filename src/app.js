@@ -1,6 +1,7 @@
 'use strict';
 
 const http = require('http');
+const { logger: defaultLogger } = require('./logger');
 
 function handler(req, res) {
     if (req.url === '/healthz' || req.url === '/ready') {
@@ -15,8 +16,21 @@ function handler(req, res) {
     return res.end('not found');
 }
 
-function createServer() {
-    return http.createServer(handler);
+function createServer({ logger = defaultLogger } = {}) {
+    return http.createServer((req, res) => {
+        const start = Date.now();
+        res.on('finish', () => {
+            // Probes run every few seconds: keep them at DEBUG to avoid noise.
+            const probe = req.url === '/healthz' || req.url === '/ready';
+            logger[probe ? 'debug' : 'info']('http request', {
+                method: req.method,
+                path: req.url,
+                status: res.statusCode,
+                duration_ms: Date.now() - start,
+            });
+        });
+        handler(req, res);
+    });
 }
 
 module.exports = { createServer };

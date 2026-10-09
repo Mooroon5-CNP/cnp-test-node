@@ -21,3 +21,28 @@ test('health and root endpoints', async () => {
         server.close();
     }
 });
+
+test('emits structured JSON logs with the Datadog unified service tags', async () => {
+    const { createLogger } = require('../src/logger');
+    const lines = [];
+    const logger = createLogger({
+        env: { DD_SERVICE: 'cnp-test-node', DD_ENV: 'dev', DD_VERSION: 'abc123', LOG_LEVEL: 'INFO' },
+        write: line => lines.push(line),
+    });
+    const server = createServer({ logger }).listen(0);
+    try {
+        await get(server, '/');
+        await get(server, '/healthz'); // DEBUG, filtered out at INFO
+        await new Promise(r => setImmediate(r));
+    } finally {
+        server.close();
+    }
+    assert.strictEqual(lines.length, 1);
+    const entry = JSON.parse(lines[0]);
+    assert.strictEqual(entry.level, 'INFO');
+    assert.strictEqual(entry.service, 'cnp-test-node');
+    assert.strictEqual(entry.env, 'dev');
+    assert.strictEqual(entry.version, 'abc123');
+    assert.strictEqual(entry.path, '/');
+    assert.strictEqual(entry.status, 200);
+});
